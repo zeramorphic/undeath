@@ -10,5 +10,6 @@ inherits = "release"
 debug = true
 
 [dependencies]
+chrono = "0.4.38"
 rand = "0.8.5"
 rayon = "1.10.0"
