@@ -126,7 +126,9 @@ impl Grid {
 
     /// Renders the grid to a string.
     pub fn render(&self) -> String {
-        let mut output = String::new();
+        let border = std::iter::repeat_n('─', 2 * SIZE as usize).collect::<String>();
+
+        let mut output = format!("┌{border}┐\n");
         for y in 0..SIZE {
             let mut row = String::new();
             for x in 0..SIZE {
@@ -135,9 +137,12 @@ impl Grid {
                     _ => "██",
                 };
             }
+            output.push('│');
             output += &row;
+            output.push('│');
             output.push('\n');
         }
+        output += &format!("└{border}┘");
         output
     }
 
