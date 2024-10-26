@@ -4,12 +4,29 @@ use std::{
     path::Path,
 };
 
-pub const SIZE: i32 = 8;
+pub const SIZE: i32 = 16;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]
 pub struct Cell {
-    value: i32,
+    pub value: i32,
+}
+
+impl Cell {
+    #[inline]
+    pub fn neg_one() -> Cell {
+        Cell { value: -1 }
+    }
+
+    #[inline]
+    pub fn zero() -> Cell {
+        Cell { value: 0 }
+    }
+
+    #[inline]
+    pub fn one() -> Cell {
+        Cell { value: 1 }
+    }
 }
 
 impl Add for Cell {
@@ -88,6 +105,12 @@ impl<'a> SubAssign<&'a Grid> for Grid {
 }
 
 impl Grid {
+    pub fn fill(cell: Cell) -> Self {
+        Self {
+            cells: [cell; (SIZE * SIZE) as usize],
+        }
+    }
+
     #[inline]
     pub unsafe fn get(&self, x: i32, y: i32) -> Cell {
         *self.cells.get_unchecked((x + y * SIZE) as usize)
@@ -110,6 +133,43 @@ impl Grid {
         unsafe { self.set((x + SIZE) % SIZE, (y + SIZE) % SIZE, cell) }
     }
 
+    #[inline]
+    pub unsafe fn set_add(&mut self, x: i32, y: i32, cell: Cell) {
+        *self.cells.get_unchecked_mut((x + y * SIZE) as usize) += cell;
+    }
+
+    /// Assumes `x` and `y` aren't less than or equal to `-SIZE`.
+    #[inline]
+    pub fn set_add_wrapped(&mut self, x: i32, y: i32, cell: Cell) {
+        let x = (x + SIZE) % SIZE;
+        let y = (y + SIZE) % SIZE;
+        unsafe {
+            self.set_add(x, y, cell);
+        }
+    }
+
+    /// The list of proper neighbours.
+    /// All clamped to `0..SIZE`.
+    #[inline]
+    pub fn neighbour_positions(x: i32, y: i32) -> [(i32, i32); 8] {
+        [
+            ((x + -1 + SIZE) % SIZE, (y + -1 + SIZE) % SIZE),
+            ((x + -1 + SIZE) % SIZE, (y + 0 + SIZE) % SIZE),
+            ((x + -1 + SIZE) % SIZE, (y + 1 + SIZE) % SIZE),
+            ((x + 0 + SIZE) % SIZE, (y + -1 + SIZE) % SIZE),
+            ((x + 0 + SIZE) % SIZE, (y + 1 + SIZE) % SIZE),
+            ((x + 1 + SIZE) % SIZE, (y + -1 + SIZE) % SIZE),
+            ((x + 1 + SIZE) % SIZE, (y + 0 + SIZE) % SIZE),
+            ((x + 1 + SIZE) % SIZE, (y + 1 + SIZE) % SIZE),
+        ]
+    }
+
+    pub fn alive_cells(&self) -> impl Iterator<Item = (i32, i32)> + use<'_> {
+        (0..SIZE)
+            .flat_map(|x| (0..SIZE).map(move |y| (x, y)))
+            .filter(|(x, y)| unsafe { self.get(*x, *y) }.value > 0)
+    }
+
     pub fn from_file(path: impl AsRef<Path>) -> Self {
         let contents = std::fs::read_to_string(path).unwrap();
         let mut result = Self::default();
@@ -128,7 +188,8 @@ impl Grid {
     pub fn render(&self) -> String {
         let border = std::iter::repeat_n('─', 2 * SIZE as usize).collect::<String>();
 
-        let mut output = format!("┌{border}┐\n");
+        let column_numbers = (0..SIZE).map(|i| format!("{i:2}")).collect::<String>();
+        let mut output = format!("    {column_numbers} \n   ┌{border}┐\n");
         for y in 0..SIZE {
             let mut row = String::new();
             for x in 0..SIZE {
@@ -137,12 +198,12 @@ impl Grid {
                     _ => "██",
                 };
             }
-            output.push('│');
+            output += &format!("{y:2} │");
             output += &row;
             output.push('│');
             output.push('\n');
         }
-        output += &format!("└{border}┘");
+        output += &format!("   └{border}┘");
         output
     }
 
