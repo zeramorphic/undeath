@@ -8,7 +8,6 @@ pub struct Searcher {
     next: Grid,
     guess_stack: Vec<Guess>,
     action_stack: Vec<Action>,
-    iterations: usize,
     all_cells: Vec<(i32, i32)>,
     alive_cells: Vec<(i32, i32)>,
 }
@@ -47,7 +46,6 @@ impl Searcher {
             next,
             guess_stack: vec![Guess::default()],
             action_stack: vec![Action::MakeGuess],
-            iterations: 0,
             all_cells,
             alive_cells,
         }
@@ -58,12 +56,11 @@ impl Searcher {
     }
 
     pub fn search(&mut self, max_iterations: usize) -> SearchResult {
-        let mut inner_iterations = 0;
+        let mut iterations = 0;
         while let Some(action) = self.action_stack.last().copied() {
             let guess = self.guess_stack.last().unwrap();
 
-            self.iterations += 1;
-            inner_iterations += 1;
+            iterations += 1;
 
             match action {
                 Action::MakeGuess => {
@@ -128,7 +125,7 @@ impl Searcher {
                                     }
                                 }
                             }
-                            return SearchResult::Found(alive, self.iterations);
+                            return SearchResult::Found(alive, iterations);
                         }
                     };
                 }
@@ -181,8 +178,8 @@ impl Searcher {
                 }
             }
 
-            if inner_iterations >= max_iterations {
-                return SearchResult::Working(self.iterations);
+            if iterations >= max_iterations {
+                return SearchResult::Working(iterations);
             }
         }
 
