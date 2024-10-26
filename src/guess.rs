@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use crate::grid::{Cell, Grid, SIZE};
 
 /// A guess for what the previous frame could look like.
@@ -15,6 +13,10 @@ pub struct Guess {
     max_neighbours: Grid,
     /// True if we know this guess leads to a logical contradiction.
     found_contradiction: bool,
+    /// The cells that we want to try making alive.
+    try_alive: Grid,
+    /// The cells that we want to try making alive.
+    try_dead: Grid,
 }
 
 impl Default for Guess {
@@ -25,6 +27,8 @@ impl Default for Guess {
             min_neighbours: Default::default(),
             max_neighbours: Grid::fill(Cell { value: 8 }),
             found_contradiction: false,
+            try_alive: Default::default(),
+            try_dead: Default::default(),
         }
     }
 }
@@ -64,6 +68,14 @@ impl Guess {
         self.dead.clone()
     }
 
+    pub fn try_alive(&self) -> Grid {
+        self.try_alive.clone()
+    }
+
+    pub fn try_dead(&self) -> Grid {
+        self.try_dead.clone()
+    }
+
     pub unsafe fn guessed_alive(&self, x: i32, y: i32) -> bool {
         self.alive.get(x, y).value > 0
     }
@@ -75,7 +87,7 @@ impl Guess {
     /// Adjust this guess with the additional information that the given cell is alive.
     /// Safety: `x` and `y` must be between `0` and `SIZE`.
     pub fn guess_alive(&mut self, next: &Grid, x: i32, y: i32) {
-        let mut queue = VecDeque::new();
+        let mut queue = Vec::with_capacity((SIZE * SIZE) as usize);
         if let Ok(()) = self.guess_alive_with_queue(x, y, &mut queue) {
             let _ = self.propagate_constraints(next, queue);
         }
@@ -84,7 +96,7 @@ impl Guess {
     /// Adjust this guess with the additional information that the given cell is dead.
     /// Safety: `x` and `y` must be between `0` and `SIZE`.
     pub fn guess_dead(&mut self, next: &Grid, x: i32, y: i32) {
-        let mut queue = VecDeque::new();
+        let mut queue = Vec::with_capacity((SIZE * SIZE) as usize);
         if let Ok(()) = self.guess_dead_with_queue(x, y, &mut queue) {
             let _ = self.propagate_constraints(next, queue);
         }
@@ -99,7 +111,7 @@ impl Guess {
         &mut self,
         x: i32,
         y: i32,
-        queue: &mut VecDeque<(i32, i32)>,
+        queue: &mut Vec<(i32, i32)>,
     ) -> Result<(), ()> {
         if unsafe { self.dead.get(x, y) }.value > 0 {
             self.fail()?
@@ -119,9 +131,10 @@ impl Guess {
             unsafe {
                 self.min_neighbours.set_add(x2, y2, Cell::one());
             }
-            if !queue.contains(&(x2, y2)) {
-                queue.push_back((x2, y2));
-            }
+            // It's faster without this check!
+            // if !queue.contains(&(x2, y2)) {
+            queue.push((x2, y2));
+            // }
         }
 
         Ok(())
@@ -131,7 +144,7 @@ impl Guess {
         &mut self,
         x: i32,
         y: i32,
-        queue: &mut VecDeque<(i32, i32)>,
+        queue: &mut Vec<(i32, i32)>,
     ) -> Result<(), ()> {
         if unsafe { self.alive.get(x, y) }.value > 0 {
             self.fail()?
@@ -151,9 +164,9 @@ impl Guess {
             unsafe {
                 self.max_neighbours.set_add(x2, y2, Cell::neg_one());
             }
-            if !queue.contains(&(x2, y2)) {
-                queue.push_back((x2, y2));
-            }
+            // if !queue.contains(&(x2, y2)) {
+            queue.push((x2, y2));
+            // }
         }
 
         Ok(())
@@ -163,7 +176,7 @@ impl Guess {
         &mut self,
         x: i32,
         y: i32,
-        queue: &mut VecDeque<(i32, i32)>,
+        queue: &mut Vec<(i32, i32)>,
     ) -> Result<(), ()> {
         for (x2, y2) in Grid::neighbour_positions(x, y) {
             // If the cell is not already marked as dead or alive...
@@ -181,7 +194,7 @@ impl Guess {
         &mut self,
         x: i32,
         y: i32,
-        queue: &mut VecDeque<(i32, i32)>,
+        queue: &mut Vec<(i32, i32)>,
     ) -> Result<(), ()> {
         for (x2, y2) in Grid::neighbour_positions(x, y) {
             // If the cell is not already marked as dead or alive...
@@ -199,12 +212,8 @@ impl Guess {
     /// work out some more information about the previous frame.
     /// The queue is the list of cells whose neighbour count has just been updated.
     /// Safety: this queue should only contain properly wrapped positions.
-    fn propagate_constraints(
-        &mut self,
-        next: &Grid,
-        mut queue: VecDeque<(i32, i32)>,
-    ) -> Result<(), ()> {
-        while let Some((x, y)) = queue.pop_front() {
+    fn propagate_constraints(&mut self, next: &Grid, mut queue: Vec<(i32, i32)>) -> Result<(), ()> {
+        while let Some((x, y)) = queue.pop() {
             let min = unsafe { self.min_neighbours.get(x, y) }.value;
             let max = unsafe { self.max_neighbours.get(x, y) }.value;
             let next_state = unsafe { next.get(x, y) }.value;
@@ -298,6 +307,30 @@ impl Guess {
                         self.guess_neighbours_dead_with_queue(x, y, &mut queue)?;
                     } else if max == 3 {
                         self.guess_neighbours_alive_with_queue(x, y, &mut queue)?;
+                    } else if min == 2 {
+                        // We'd like to try individually setting the neighbours of this cell to be alive.
+                        for (x2, y2) in Grid::neighbour_positions(x, y) {
+                            // If the cell is not already marked as dead or alive...
+                            if unsafe { self.dead.get(x2, y2) }.value == 0
+                                && unsafe { self.alive.get(x2, y2) }.value == 0
+                            {
+                                // ...express our desire to test the case where it is alive.
+                                unsafe {
+                                    self.try_alive.set(x2, y2, Cell::one());
+                                }
+                            }
+                        }
+                    } else if max == 4 {
+                        // We'd like to try individually setting the neighbours of this cell to be dead.
+                        for (x2, y2) in Grid::neighbour_positions(x, y) {
+                            if unsafe { self.dead.get(x2, y2) }.value == 0
+                                && unsafe { self.alive.get(x2, y2) }.value == 0
+                            {
+                                unsafe {
+                                    self.try_dead.set(x2, y2, Cell::one());
+                                }
+                            }
+                        }
                     }
                 }
                 (true, _, true) => {

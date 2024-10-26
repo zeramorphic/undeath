@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-pub const SIZE: i32 = 12;
+pub const SIZE: i32 = 8;
 
 #[derive(Default, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(transparent)]

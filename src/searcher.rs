@@ -23,7 +23,7 @@ enum Action {
 }
 
 pub enum SearchResult {
-    Found(Grid),
+    Found(Grid, usize),
     Working(usize),
     Unsatisfiable,
 }
@@ -70,14 +70,28 @@ impl Searcher {
                     self.action_stack.pop();
                     // Make a guess.
                     // Pick a cell that has not yet been guessed.
-                    match self.all_cells.iter().find(|(x, y)| unsafe {
-                        !guess.guessed_alive(*x, *y) && !guess.guessed_dead(*x, *y)
-                    }) {
+
+                    let mut try_dead = guess.try_dead();
+                    try_dead -= &guess.alive();
+                    try_dead -= &guess.dead();
+
+                    let mut try_alive = guess.try_alive();
+                    try_alive -= &guess.alive();
+                    try_alive -= &guess.dead();
+
+                    match try_dead
+                        .alive_cells()
+                        .chain(try_alive.alive_cells())
+                        .chain(self.all_cells.iter().copied().filter(|(x, y)| unsafe {
+                            !guess.guessed_alive(*x, *y) && !guess.guessed_dead(*x, *y)
+                        }))
+                        .next()
+                    {
                         Some((x, y)) => {
                             self.action_stack.push(Action::FirstGuess(
-                                *x,
-                                *y,
-                                self.alive_cells.contains(&(*x, *y)),
+                                x,
+                                y,
+                                self.alive_cells.contains(&(x, y)),
                             ));
                         }
                         None => {
@@ -114,9 +128,9 @@ impl Searcher {
                                     }
                                 }
                             }
-                            return SearchResult::Found(alive);
+                            return SearchResult::Found(alive, self.iterations);
                         }
-                    }
+                    };
                 }
                 Action::FirstGuess(x, y, alive) => {
                     let mut new_guess = guess.clone();

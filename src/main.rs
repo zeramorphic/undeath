@@ -1,52 +1,75 @@
 #![feature(maybe_uninit_uninit_array, maybe_uninit_array_assume_init)]
 
-use std::io::Write;
-
 use grid::Grid;
 use searcher::{SearchResult, Searcher};
-use string::hconcat;
+use string::large_number;
 
 pub mod grid;
 pub mod guess;
 pub mod searcher;
 pub mod string;
 
+#[derive(Clone)]
+pub struct Sequence {
+    grids: Vec<Grid>,
+    terminated: bool,
+}
+
 fn main() {
-    let next = Grid::from_file("castle.gol");
-    let mut searcher = Searcher::new(next.clone());
-    let mut grids = Vec::new();
-    let mut best: usize = std::usize::MAX;
+    let start = Grid::from_file("glider.gol");
+    let mut attempts = vec![Sequence {
+        grids: vec![start],
+        terminated: false,
+    }];
+
+    let micro_step_size = 100_000;
+    let mut macro_steps = 0;
+    let mut i = 0;
     loop {
-        match searcher.search(100_000) {
-            SearchResult::Found(grid) => {
-                if !grids.contains(&grid) {
-                    let actives = grid.alive_cells().count();
-                    if actives <= best {
-                        println!();
-                        println!(
-                            "found solution #{} using {} cells:",
-                            grids.len() + 1,
-                            actives
-                        );
-                        println!("{}", hconcat(&grid.render(), &next.render(), "   "));
-                        best = actives;
-                    }
-                    grids.push(grid);
+        let current_attempt = &mut attempts[i];
+        if !current_attempt.terminated {
+            let mut searcher = Searcher::new(current_attempt.grids.last().unwrap().clone());
+            match searcher.search(micro_step_size) {
+                SearchResult::Found(grid, iterations) => {
+                    let mut new_attempt = current_attempt.clone();
+                    new_attempt.grids.push(grid);
+                    attempts.push(new_attempt);
+                }
+                SearchResult::Working(iterations) => {
+                    // println!("{} million iterations.", iterations / 1_000_000);
+                    // println!(
+                    //     "{}",
+                    //     hconcat(&searcher.current_guess().render(), &next.render(), "   ")
+                    // );
+                }
+                SearchResult::Unsatisfiable => {
+                    current_attempt.terminated = true;
                 }
             }
-            SearchResult::Working(iterations) => {
-                if iterations > 1_000_000 {
-                    println!("{} million iterations.", iterations / 1_000_000);
-                }
-                println!(
-                    "{}",
-                    hconcat(&searcher.current_guess().render(), &next.render(), "   ")
-                );
-            }
-            SearchResult::Unsatisfiable => {
-                println!("Search complete.");
-                break;
-            }
+        }
+
+        i += 1;
+        if i >= attempts.len() {
+            i = 0;
+        }
+
+        macro_steps += 1;
+
+        if macro_steps % 10 == 0 {
+            println!("---");
+            println!(
+                "{} iterations.",
+                large_number(macro_steps * micro_step_size)
+            );
+            println!("{} running attempts.", large_number(attempts.len()));
+            println!(
+                "{} terminated attempts.",
+                attempts.iter().filter(|x| x.terminated).count()
+            );
+            println!(
+                "Longest chain is length {}.",
+                attempts.iter().map(|x| x.grids.len()).max().unwrap()
+            );
         }
     }
 }
