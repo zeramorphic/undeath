@@ -35,7 +35,7 @@ impl Searcher {
             .collect::<Vec<_>>();
         // Try cells furthest from active ones first.
         all_cells.sort_by_key(|(x, y)| {
-            alive_cells
+            -alive_cells
                 .iter()
                 .map(|(ax, ay)| ((ax - x + SIZE) % SIZE).abs() + ((ay - y + SIZE) % SIZE).abs())
                 .min()

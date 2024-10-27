@@ -31,7 +31,7 @@ fn main() {
         .build_global()
         .unwrap();
 
-    let start = Grid::from_file("minicastle.gol");
+    let start = Grid::from_file("glider.gol");
     let mut attempts = vec![Sequence {
         grids: vec![start.clone()],
         searcher: Searcher::new(start),
